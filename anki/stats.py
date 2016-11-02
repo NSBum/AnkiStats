@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
+
+# Portions of this code are:
 # Copyright: Damien Elmes <anki@ichi2.net>
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
+# Including the True Retention add-on https://ankiweb.net/shared/info/613684242
 
 from __future__ import division
 import time
 import datetime
 import json
+import pprint
 
 #import anki.js
 from anki.utils import fmtTimeSpan, ids2str
@@ -92,6 +96,11 @@ from revlog where id > ? """+lim, (self.col.sched.dayCutoff-86400)*1000)
         _todayStats.learn = lrn
         _todayStats.filter = filt
         _todayStats.duration = thetime
+        _todayStats.trueRetention = self.trueRetentionDay()
+        (low, avg, high) = self._easeFactors()
+        _todayStats.lowEase = low
+        _todayStats.avgEase = avg
+        _todayStats.highEase = high
 
         mcnt, msum = self.col.db.first("""
 select count(), sum(case when ease = 1 then 0 else 1 end) from revlog
@@ -119,6 +128,39 @@ SELECT COUNT(*) from cards
 
         return _todayStats
 
+    #   compute the true retention rate for a given span, day limit
+    def trueRetention(self, lim, span):
+        flunked, passed, learned, relearned = self.col.db.first("""
+        select
+        sum(case when ease = 1 and type == 1 then 1 else 0 end), /* flunked */
+        sum(case when ease > 1 and type == 1 then 1 else 0 end), /* passed */
+        sum(case when ivl > 0 and type == 0 then 1 else 0 end), /* learned */
+        sum(case when ivl > 0 and type == 2 then 1 else 0 end) /* relearned */
+        from revlog where id > ? """+lim, span)
+        flunked = flunked or 0
+        passed = passed or 0
+        learned = learned or 0
+        relearned = relearned or 0
+        try:
+            temp = "%0.3f" %(passed/float(passed+flunked))
+        except ZeroDivisionError:
+            temp = "N/A"
+        return temp
+
+    def trueRetentionDay(self):
+        lim = self._revlogLimit()
+        if lim:
+            lim = " and " + lim
+        return self.trueRetention(lim, (self.col.sched.dayCutoff-86400)*1000)
+
+    def _easeFactors(self):
+        return self.col.db.first("""
+        select
+        min(factor) / 10.0,
+        avg(factor) / 10.0,
+        max(factor) / 10.0
+        from cards where did in %s and queue = 2""" % self._limit())
+
     def _limit(self):
         if self.wholeCollection:
             return ids2str([d['id'] for d in self.col.decks.all()])
@@ -129,3 +171,15 @@ SELECT COUNT(*) from cards
             return ""
         return ("cid in (select id from cards where did in %s)" %
                 ids2str(self.col.decks.active()))
+
+    def _didForDeckName(self,name):
+        pp = pprint.PrettyPrinter(indent=4)
+        did = -1
+        deck_json_data = self.col.decks.decks
+        for attribute, value in deck_json_data.iteritems():
+            did = int(attribute)
+            found_name = deck_json_data[attribute]["name"]
+            pp.pprint(name)
+            if found_name == name:
+                break
+        return did
