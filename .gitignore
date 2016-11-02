@@ -1,0 +1,17 @@
+anki/*.pyc
+stats.pyc
+statsbg.pyc
+storage.pyc
+utils.pyc
+sched.pyc
+notes.pyc
+models.pyc
+lang.pyc
+errors.pyc
+decks.pyc
+__init__.pyc
+cards.pyc
+collection.pyc
+consts.pyc
+db.pyc
+.DS_Store
