@@ -31,10 +31,24 @@ collection_path = configSectionMap('Collection')['path']
 ankicollection = anki.storage.Collection(collection_path)
 stats = anki.stats.CollectionStats(ankicollection)
 
+# whole collection or a single deck?
+if int(configSectionMap('Stats')['all']) == 1:
+    stats.wholeCollection = True
+else:
+    stats.wholeCollection = False
+    deckname = configSectionMap('Stats')['deck']
+    deck_id = stats._didForDeckName(deckname)
+    print 'Deck id = {0}'.format(deck_id)
+    if deck_id == -1:
+        print "ERROR: no deck with configured name"
+        raise ValueError('There is no deck with the configured name')
+
 # configure url for data upload
 url = configSectionMap('Server')['url'] + ':'
 url += configSectionMap('Server')['port']
 url += configSectionMap('Server')['uploadpath']
+
+#stats._didForDeckName("Every card")
 
 req = urllib2.Request(url)
 req.add_header('Content-Type', 'application/json')
