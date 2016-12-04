@@ -126,6 +126,9 @@ SELECT COUNT(*) from cards
         """)
         _todayStats.tcount = tcount
 
+        #   numbers of card types
+        _todayStats.mtr, _todayStats.yng, _todayStats.new, _todayStats.susp = self._cards()
+
         return _todayStats
 
     #   compute the true retention rate for a given span, day limit
@@ -146,6 +149,15 @@ SELECT COUNT(*) from cards
         except ZeroDivisionError:
             temp = "N/A"
         return temp
+
+    def _cards(self):
+        return self.col.db.first("""
+    select
+    sum(case when queue=2 and ivl >= 21 then 1 else 0 end), -- mtr
+    sum(case when queue in (1,3) or (queue=2 and ivl < 21) then 1 else 0 end), -- yng/lrn
+    sum(case when queue=0 then 1 else 0 end), -- new
+    sum(case when queue<0 then 1 else 0 end) -- susp
+    from cards where did in %s""" % self._limit())
 
     def trueRetentionDay(self):
         lim = self._revlogLimit()
