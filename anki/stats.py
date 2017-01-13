@@ -30,6 +30,8 @@ colTime = "#770"
 colUnseen = "#000"
 colSusp = "#ff0"
 
+pp = pprint.PrettyPrinter(indent=4)
+
 # Object for daily statistics
 class DayStats_(object):
     def __init__(self):
@@ -129,6 +131,14 @@ SELECT COUNT(*) from cards
         #   numbers of card types
         _todayStats.mtr, _todayStats.yng, _todayStats.new, _todayStats.susp = self._cards()
 
+        #   collect data on the percent good for each of the card
+        #   types learning, young and mature
+        #   these are fractions 0 - 1.0 rounded to 3 decimals
+        easePercents = self.easeData()
+        _todayStats.good_lrn = easePercents[0]
+        _todayStats.good_yng = easePercents[1]
+        _todayStats.good_mature = easePercents[2]
+
         return _todayStats
 
     #   compute the true retention rate for a given span, day limit
@@ -164,6 +174,65 @@ SELECT COUNT(*) from cards
         if lim:
             lim = " and " + lim
         return self.trueRetention(lim, (self.col.sched.dayCutoff-86400)*1000)
+
+    def easeData(self):
+        d = {'lrn':[], 'yng':[], 'mtr':[]}
+        types = ("lrn", "yng", "mtr")
+        eases = self._eases()
+        for (type, ease, cnt) in eases:
+            if type == 1:
+                ease += 5
+            elif type == 2:
+                ease += 10
+            n = types[type]
+            d[n].append((ease, cnt))
+            #return d
+            return self._easeInfo(eases)
+
+    def _eases(self):
+        lims = []
+        lim = self._revlogLimit()
+        if lim:
+            lims.append(lim)
+        if self.type == 0:
+            days = 30
+        elif self.type == 1:
+            days = 365
+        else:
+            days = None
+        if days is not None:
+            lims.append("id > %d" % (
+                (self.col.sched.dayCutoff-(days*86400))*1000))
+        if lims:
+            lim = "where " + " and ".join(lims)
+        else:
+            lim = ""
+        return self.col.db.all("""
+select (case
+when type in (0,2) then 0
+when lastIvl < 21 then 1
+else 2 end) as thetype,
+(case when type in (0,2) and ease = 4 then 3 else ease end), count() from revlog %s
+group by thetype, ease
+order by thetype, ease""" % lim)
+
+    def _easeInfo(self, eases):
+        types = {0: [0, 0], 1: [0, 0], 2: [0,0]}
+        for (type, ease, cnt) in eases:
+            if ease == 1:
+                types[type][0] += cnt
+            else:
+                types[type][1] += cnt
+        i = []
+        for type in range(3):
+            (bad, good) = types[type]
+            tot = bad + good
+            try:
+                pct = round(good / float(tot),3)
+            except:
+                pct = 0
+            i.append(pct)
+        return i
 
     def _easeFactors(self):
         return self.col.db.first("""
